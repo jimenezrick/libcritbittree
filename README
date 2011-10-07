@@ -1,0 +1,4 @@
+  Crit-bit trees C library
+============================
+
+C library implementing the D. J. Bernstein crit-bit trees.
