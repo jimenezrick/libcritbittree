@@ -17,7 +17,7 @@ bool cbtree_contain(critbit_tree_t *tree, const uint8_t *data, size_t len);
 
 bool cbtree_contain_str(critbit_tree_t *tree, const char *str)
 {
-	return cbtree_contain(tree, (uint8_t *) str, 0);
+	return cbtree_contain(tree, (uint8_t *) str, strlen(str));
 }
 
 bool cbtree_contain(critbit_tree_t *tree, const uint8_t *data, size_t len)
@@ -26,8 +26,6 @@ bool cbtree_contain(critbit_tree_t *tree, const uint8_t *data, size_t len)
 
 	if (!p)
 		return false;
-	if (!len)
-		len = strlen((char *) data);
 
 	while ((intptr_t) p & 1) {
 		critbit_node_t *q = p - 1;
@@ -40,8 +38,5 @@ bool cbtree_contain(critbit_tree_t *tree, const uint8_t *data, size_t len)
 		p = q->child[dir];
 	}
 
-	if (len)
-		return memcmp(data, p, len);
-	else
-		return strcmp((char *) data, (char *) p) == 0;
+	return memcmp(data, p, len);
 }
