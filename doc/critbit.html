@@ -1,0 +1,166 @@
+<html>
+<head>
+<title>Crit-bit trees</title>
+<meta name="keywords" content="crit-bit trees, critical-bit trees, patricia trees, morrison-gwehenberger trees">
+</head>
+<body>
+<a href="djb.html">D. J. Bernstein</a>
+<br><a href="data.html">Data structures and program structures</a>
+<h1>Crit-bit trees</h1>
+<h2>Interface to crit-bit trees</h2>
+A crit-bit tree stores a prefix-free set of bit strings:
+a set of 64-bit integers,
+for example,
+or a set of variable-length 0-terminated byte strings.
+<p>
+A crit-bit tree supports the following operations (and more!) at high speed:
+<ul>
+<li>See whether a string x is in the tree.
+<li>Add x to the tree.
+<li>Remove x from the tree.
+<li>Find the lexicographically smallest string in the tree larger than x,
+if there is one.
+<li>Find all suffixes of x in the tree, i.e., all strings in the tree that have x as a prefix.
+Of course, this can take a long time if there are many such strings,
+but each string is found quickly.
+</ul>
+<p>
+A crit-bit tree can be used as a high-speed associative array.
+For example,
+an array mapping 54 to 1, 19 to 2, 99 to 3, 85 to 4, and 88 to 5
+can be stored as a crit-bit tree containing 54=1, 19=2, 99=3, 85=4, and 88=5.
+The smallest string in the crit-bit tree larger than 85= is 85=4.
+<h2>Definition of crit-bit trees</h2>
+A crit-bit tree for a nonempty prefix-free set S of bit strings
+has an external node for each string in S;
+an internal node for each bit string x
+such that x0 and x1 are prefixes of strings in S;
+and ancestors defined by prefixes.
+The internal node for x is compressed:
+one simply stores the length of x,
+identifying the position of the <b>critical bit</b> (<b>crit bit</b>)
+that follows x.
+<p>
+Each internal node in a pure crit-bit tree is stored as three components:
+<ul>
+<li>Left: A pointer to the left child node, if that node is internal;
+otherwise the string at the left child node.
+<li>Length: An integer, the crit-bit position.
+<li>Right: A pointer to the right child node, if that node is internal;
+otherwise the string at the right child node.
+</ul>
+The total overhead, on top of the strings stored,
+is one pointer down to each internal node,
+and one integer at each internal node;
+in other words, one pointer and one integer for each string.
+<p>
+Strings need to be visibly distinguishable from pointers,
+but this costs at most one extra bit per string.
+The simplest general approach is
+to incorporate these two internal/external selector bits into the length,
+to have the left string stretching out to the left of the length in memory,
+and to have the right string stretching out to the right of the length in memory;
+all of the usual string-termination options,
+including counters and 0-termination and known fixed lengths, are applicable.
+Of course, pointing to this node means pointing to the length field in the middle.
+If strings are actually expressed as pointers to a separate storage pool,
+with at least 2-byte alignment for each pointer,
+then another option is to use the bottom bit of the pointer as the internal/external selector bit.
+<h2>Variants of crit-bit trees</h2>
+People are often tempted to augment the internal nodes in binary trees
+to include parent pointers, sibling pointers, child counts, etc.
+However, these modifications consume more space than a pure crit-bit tree,
+and I haven't seen any serious applications where the modifications provide speedups
+that outweigh the general slowdown caused by using more memory.
+<p>
+The basic idea of critical bits
+was introduced in 1968 by Morrison and independently Gwehenberger,
+but in retrospect their data structures were unnecessarily augmented
+beyond pure crit-bit trees.
+Subsequent variants
+differ in the amount of augmentation,
+in the algorithms provided,
+and in the correctness of those algorithms:
+<br>
+<table border>
+<tr><th>Overhead on top of each string stored</th><th>Literature</th></tr>
+<tr><td>5 control words: pointer, pointer, pointer, integer, integer</td><td>1968 Morrison;
+"PATRICIA"; no mention that fast deletion is possible</td></tr>
+<tr><td>3 control words: pointer, pointer, integer</td><td>1968 Gwehenberger;
+no mention that fast deletion is possible</td></tr>
+<tr><td>4 control words: pointer, pointer, pointer, integer</td><td>1973 Knuth;
+algorithms provided for suffix searching and (in an exercise) insertion;
+no mention of fast deletion and lexicographic operations</td></tr>
+<tr><td>3 control words: pointer, pointer, integer</td><td>1983 Sedgewick;
+mentions that deletion is possible but does not state a deletion algorithm;
+at least in the first two editions,
+states an insertion algorithm that fails when it inserts a new root
+(pointed out by Tim Lee)</td></tr>
+<tr><td>3 control words: pointer, pointer, integer</td><td>1991 Sklower;
+only for short fixed-length strings;
+implementations of insertion, deletion, and lexicographic searching</td></tr>
+<tr><td>2 control words: pointer, integer</td><td>2004 Bernstein;
+"crit-bit trees";
+implementations (posted in 2006)
+of insertion, deletion, exact searching, and suffix searching</td></tr>
+</table>
+<br>
+Most people don't seem to realize how fast crit-bit trees can be;
+most people don't seem to realize how small crit-bit trees can be;
+most people don't seem to realize that crit-bit trees
+support all of the standard data-structure operations.
+PATRICIA is often dismissed as being large and complicated,
+but pure crit-bit trees are actually quite small and simple.
+<h2>Putting crit-bit trees to work</h2>
+The standard strategy
+for many years has been to store searchable data sets as hash tables,
+in applications that need exact searches
+but not lexicographic searches;
+or as heaps, in applications that need to search for the minimum;
+or as AVL trees, red-black trees, etc. in applications
+that do not fit the restrictions of hash tables and heaps.
+<p>
+In Python, for example,
+the built-in "dict" data type is a hash table.
+Hash tables don't provide fast access to the smallest entry,
+so there's also a standard "heapq" library providing heaps.
+Heaps don't provide fast lookups of other entries,
+so there are various add-on libraries providing AVL trees and so on.
+A programmer who's happy creating a "dict" will simply do so,
+but then another programmer who wants fancier operations on the resulting database
+has to do an expensive conversion of the "dict" to a fancier data structure.
+<p>
+I have become convinced that this strategy should change.
+The revised strategy is much simpler:
+there should be one fundamental set-storage type, namely a crit-bit tree.
+Here's how a crit-bit tree stacks up against the competition:
+<ul>
+<li>
+A hash table supports insertion, deletion, and exact searches.
+A crit-bit tree supports insertion, deletion, exact searches,
+<i>and</i> ordered operations such as finding the minimum.
+Another advantage is that a crit-bit tree <i>guarantees</i> good performance:
+it doesn't have any tricky slowdowns for unusual (or malicious) data.
+<li>
+A heap supports insertion, deletion, and finding the minimum.
+A crit-bit tree supports insertion, deletion, finding the minimum,
+<i>and</i> exact searches, <i>and</i> general suffix searches.
+<li>
+General-purpose comparison-based structures such as AVL trees and B-trees
+support exactly the same operations as a crit-bit tree.
+However,
+crit-bit trees are faster and simpler, especially for variable-length strings.
+B-trees advertise a memory layout that's friendly to your disk,
+but with less effort one can use a similar "clustering" organization
+for nodes in a crit-bit tree.
+</ul>
+If you're designing a programming language,
+imagine how much happier your programmers will be
+if your basic built-in data type
+allows not just looking up x,
+but also enumerating the strings after x in sorted order.
+You can't do this with hash tables.
+You could do it with an AVL tree,
+but your operations will be simpler and faster if you use a crit-bit tree.
+</body>
+</html>
