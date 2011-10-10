@@ -22,6 +22,9 @@ static bool cbtree_contains_str(critbit_tree_t *tree, const char *str);
 static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len);
 static critbit_node_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len);
 static critbit_node_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_t *data, size_t len, uint32_t *last_byte);
+static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str);
+static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static void *cbtree_allocate(size_t len);
 
 static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 {
@@ -59,19 +62,56 @@ static critbit_node_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const
 	*last_byte = 0;
 	while (INTERNAL_NODE(node)) {
 		critbit_node_t *in_node = node - 1;
-		uint8_t         b = 0;
+		uint8_t         val = 0;
 		int             dir;
 
 		if (in_node->byte < len) {
-			b = data[in_node->byte];
+			val = data[in_node->byte];
 			*last_byte = in_node->byte + 1;
 		}
-		dir = ((in_node->bitmask | b) + 1) >> 8;
+		dir = ((in_node->bitmask | val) + 1) >> 8;
 		node = in_node->child[dir];
 	}
 
 	return node;
 }
+
+static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str)
+{
+	// FIXME: len + 1, problematico en el caso general?
+	return cbtree_insert(tree, (uint8_t *) str, strlen(str) + 1);
+}
+
+static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len)
+{
+	if (!tree->root) {
+		void *ptr;
+
+		if (!(ptr = cbtree_allocate(len)))
+			return CBTREE_ENOMEM;
+
+		memcpy(ptr, data, len);
+		tree->root = ptr;
+
+		return CBTREE_OK;
+	}
+}
+
+static void *cbtree_allocate(size_t len)
+{
+	void *ptr;
+
+	if (posix_memalign(&ptr, sizeof(void *), len))
+		return NULL;
+
+	return ptr;
+}
+
+
+
+
+
+
 
 
 
@@ -126,13 +166,4 @@ different_byte_found:
 
 
 
-critbit_node_t *cbtree_allocate(size_t len)
-{
-	critbit_node_t *node;
-
-	if (posix_memalign(&node, sizeof(void *), len))
-		return NULL;
-
-	return node;
-}
 */
