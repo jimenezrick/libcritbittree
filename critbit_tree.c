@@ -21,6 +21,7 @@ typedef struct {
 static bool cbtree_contains_str(critbit_tree_t *tree, const char *str);
 static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len);
 static critbit_node_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static critbit_node_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_t *data, size_t len, uint32_t *last_byte);
 
 static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 {
@@ -30,30 +31,41 @@ static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
 	critbit_node_t *node;
+	uint32_t last_byte;
 
-	if ((node = cbtree_find_nearest(tree, data, len)) == NULL)
+	if ((node = cbtree_find_nearest_last_byte(tree, data, len, &last_byte)) == NULL)
 		return false;
 
 	if (VAR_LEN_NODE(node))
-		return strcmp((char *) data, (char *) node) == 0;
+		return strcmp((char *) data + last_byte, (char *) node + last_byte) == 0;
 	else
-		return memcmp(data, node, len) == 0;
+		return memcmp(data + last_byte, node + last_byte, len - last_byte) == 0;
 }
 
 static critbit_node_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len)
+{
+	uint32_t last_byte;
+
+	return cbtree_find_nearest_last_byte(tree, data, len, &last_byte);
+}
+
+static critbit_node_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_t *data, size_t len, uint32_t *last_byte)
 {
 	critbit_node_t *node = tree->root;
 
 	if (!tree->root)
 		return NULL;
 
+	*last_byte = 0;
 	while (INTERNAL_NODE(node)) {
 		critbit_node_t *in_node = node - 1;
 		uint8_t         b = 0;
 		int             dir;
 
-		if (in_node->byte < len)
+		if (in_node->byte < len) {
 			b = data[in_node->byte];
+			*last_byte = in_node->byte + 1;
+		}
 		dir = ((in_node->bitmask | b) + 1) >> 8;
 		node = in_node->child[dir];
 	}
