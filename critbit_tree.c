@@ -3,11 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum {CBTREE_OK, CBTREE_FAIL, CBTREE_NOMEM} cbtree_insert_result_t;
+#define INTERNAL_NODE(node) ((intptr_t) node & 1)
+#define VAR_LEN_NODE(node)  ((intptr_t) node & 2)
+
+typedef enum {CBTREE_OK, CBTREE_FAIL, CBTREE_ENOMEM} cbtree_result_t;
 
 typedef struct {
 	void    *child[2];
-	int      byte;
+	uint32_t byte;
 	uint8_t  bitmask;
 } critbit_node_t;
 
@@ -15,44 +18,55 @@ typedef struct {
 	void *root;
 } critbit_tree_t;
 
-bool cbtree_contains_str(critbit_tree_t *tree, const char *str);
-bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static bool cbtree_contains_str(critbit_tree_t *tree, const char *str);
+static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static critbit_node_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len);
 
-bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
+static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 {
-	return cbtree_contains(tree, (uint8_t *) str, strlen(str) + 1);
+	return cbtree_contains(tree, (uint8_t *) str, strlen(str));
 }
 
-bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len)
+static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
 	critbit_node_t *node;
 
-	if (!tree->root)
+	if ((node = cbtree_find_nearest(tree, data, len)) == NULL)
 		return false;
-	node = cbtree_find_bit(tree, data, len);
 
-	return memcmp(data, node, len);
+	if (VAR_LEN_NODE(node))
+		return strcmp((char *) data, (char *) node) == 0;
+	else
+		return memcmp(data, node, len) == 0;
 }
 
-critbit_node_t *cbtree_find_bit(critbit_tree_t *tree, const uint8_t *data, size_t len)
+static critbit_node_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
 	critbit_node_t *node = tree->root;
 
-	while ((intptr_t) node & 1) {
-		critbit_node_t *q = node - 1;
-		uint8_t         c = 0;
+	if (!tree->root)
+		return NULL;
+
+	while (INTERNAL_NODE(node)) {
+		critbit_node_t *in_node = node - 1;
+		uint8_t         b = 0;
 		int             dir;
 
-		if (q->byte < len)
-			c = data[q->byte];
-		dir = ((q->bitmask | c) + 1) >> 8;
-		node = q->child[dir];
+		if (in_node->byte < len)
+			b = data[in_node->byte];
+		dir = ((in_node->bitmask | b) + 1) >> 8;
+		node = in_node->child[dir];
 	}
 
 	return node;
 }
 
 
+
+
+
+
+/*
 
 
 
@@ -109,3 +123,4 @@ critbit_node_t *cbtree_allocate(size_t len)
 
 	return node;
 }
+*/
