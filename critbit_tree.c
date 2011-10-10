@@ -3,8 +3,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INTERNAL_NODE(node) ((intptr_t) node & 1)
-#define VAR_LEN_NODE(node)  ((intptr_t) node & 2)
+/*
+ * The address of a block returned by malloc or realloc in the GNU system is
+ * always a multiple of eight (or sixteen on 64-bit systems).
+ *
+ * Uncomment if necessary:
+ *
+ * #define USE_POSIX_MEMALIGN
+ */
+
+#define TEST_INTERNAL_NODE(node) ((intptr_t) node & 1)
+#define TEST_VAR_LEN_NODE(node)  ((intptr_t) node & 2)
 
 typedef enum {CBTREE_OK, CBTREE_FAIL, CBTREE_ENOMEM} cbtree_result_t;
 
@@ -41,7 +50,7 @@ static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t le
 		return false;
 
 	node = cbtree_find_nearest_last_byte(tree, data, len, &last_byte);
-	if (VAR_LEN_NODE(node))
+	if (TEST_VAR_LEN_NODE(node))
 		return strcmp((char *) data + last_byte, (char *) node + last_byte) == 0;
 	else
 		return memcmp(data + last_byte, node + last_byte, len - last_byte) == 0;
@@ -64,7 +73,7 @@ static uint8_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_
 	critbit_node_t *node = tree->root;
 
 	*last_byte = 0;
-	while (INTERNAL_NODE(node)) {
+	while (TEST_INTERNAL_NODE(node)) {
 		critbit_node_t *in_node = node - 1;
 		uint8_t         val = 0;
 		int             dir;
@@ -104,6 +113,10 @@ static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, 
 	}
 
 
+	/*
+	 * TODO: cambiar las funciones *_str() para que usen SET_VAR_LEN_NODE(node)
+	 *       es necesario usar intptr_t?
+	 */
 
 
 	node = cbtree_find_nearest_last_byte(tree, data, len, &new_byte);
@@ -117,12 +130,16 @@ static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, 
 
 }
 
-static void *cbtree_allocate(size_t len)
+static void *cbtree_allocate(size_t size)
 {
 	void *ptr;
 
-	if (posix_memalign(&ptr, sizeof(void *), len))
+#ifdef USE_POSIX_MEMALIGN
+	if (posix_memalign(&ptr, sizeof(void *), size))
 		return NULL;
+#else
+	ptr = malloc(size);
+#endif
 
 	return ptr;
 }
