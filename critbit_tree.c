@@ -31,7 +31,7 @@ static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
 	critbit_node_t *node;
-	uint32_t last_byte;
+	uint32_t        last_byte;
 
 	if ((node = cbtree_find_nearest_last_byte(tree, data, len, &last_byte)) == NULL)
 		return false;
