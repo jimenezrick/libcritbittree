@@ -12,8 +12,8 @@
  * #define USE_POSIX_MEMALIGN
  */
 
-#define TEST_INTERNAL_NODE(node) ((intptr_t) node & 1)
-#define TEST_VAR_LEN_NODE(node)  ((intptr_t) node & 2)
+#define INTERNAL_NODE(node) ((intptr_t) node & 1)
+#define STR_NODE(node)      ((intptr_t) node & 2)
 
 typedef enum {CBTREE_OK, CBTREE_FAIL, CBTREE_ENOMEM} cbtree_result_t;
 
@@ -27,14 +27,7 @@ typedef struct {
 	void *root;
 } critbit_tree_t;
 
-static bool cbtree_contains_str(critbit_tree_t *tree, const char *str);
-static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len);
-static char *cbtree_find_nearest_str(critbit_tree_t *tree, const char *str);
-static uint8_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len);
-static uint8_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_t *data, size_t len, uint32_t *last_byte);
-static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str);
-static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len);
-static void *cbtree_allocate(size_t len);
+// TODO: headers
 
 static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 {
@@ -50,7 +43,7 @@ static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t le
 		return false;
 
 	node = cbtree_find_nearest_last_byte(tree, data, len, &last_byte);
-	if (TEST_VAR_LEN_NODE(node))
+	if (STR_NODE(node))
 		return strcmp((char *) data + last_byte, (char *) node + last_byte) == 0;
 	else
 		return memcmp(data + last_byte, node + last_byte, len - last_byte) == 0;
@@ -73,7 +66,7 @@ static uint8_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_
 	critbit_node_t *node = tree->root;
 
 	*last_byte = 0;
-	while (TEST_INTERNAL_NODE(node)) {
+	while (INTERNAL_NODE(node)) {
 		critbit_node_t *in_node = node - 1;
 		uint8_t         val = 0;
 		int             dir;
@@ -91,11 +84,15 @@ static uint8_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_
 
 static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str)
 {
-	// FIXME: len + 1, problematico en el caso general?
-	return cbtree_insert(tree, (uint8_t *) str, strlen(str) + 1);
+	return cbtree_insert_generic(tree, (uint8_t *) str, strlen(str), true);
 }
 
 static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len)
+{
+	return cbtree_insert_generic(tree, data, len, false);
+}
+
+static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool str_node)
 {
 	uint8_t *node;
 	uint32_t new_byte;
@@ -106,7 +103,10 @@ static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, 
 		if (!(ptr = cbtree_allocate(len)))
 			return CBTREE_ENOMEM;
 
-		memcpy(ptr, data, len);
+		if (str_node)
+			memcpy(ptr, data, len + 1);
+		else
+			memcpy(ptr, data, len);
 		tree->root = ptr;
 
 		return CBTREE_OK;
@@ -114,9 +114,7 @@ static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, 
 
 
 	/*
-	 * TODO: cambiar las funciones *_str() para que usen SET_VAR_LEN_NODE(node)
-	 *       es necesario usar intptr_t?
-	 */
+	 * TODO: añadir str_node al API y los *_generic().
 
 
 	node = cbtree_find_nearest_last_byte(tree, data, len, &new_byte);
