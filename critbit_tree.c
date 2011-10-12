@@ -5,15 +5,13 @@
 
 /*
  * The address of a block returned by malloc or realloc in the GNU system is
- * always a multiple of eight (or sixteen on 64-bit systems).
- *
- * Uncomment if necessary:
+ * always a multiple of eight (or sixteen on 64-bit systems). But if you need
+ * to use posix_memalign() instead, then uncomment:
  *
  * #define USE_POSIX_MEMALIGN
  */
 
-#define INTERNAL_NODE(node) ((intptr_t) node & 1)
-#define STR_NODE(node)      ((intptr_t) node & 2)
+#define IS_INTERNAL(node) ((uintptr_t) node & 1)
 
 typedef enum {CBTREE_OK, CBTREE_FAIL, CBTREE_ENOMEM} cbtree_result_t;
 
@@ -27,53 +25,65 @@ typedef struct {
 	void *root;
 } critbit_tree_t;
 
-// TODO: headers
+static bool cbtree_contains_str(critbit_tree_t *tree, const char *str);
+static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static bool cbtree_contains_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str);
+static char *cbtree_find_nearest_str(critbit_tree_t *tree, const char *str);
+static uint8_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static uint8_t *cbtree_find_nearest_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str, uint32_t *next_byte);
 
 static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 {
-	return cbtree_contains(tree, (uint8_t *) str, strlen(str));
+	return cbtree_contains_generic(tree, (uint8_t *) str, strlen(str), true);
 }
 
 static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
+	return cbtree_contains_generic(tree, data, len, false);
+}
+
+static bool cbtree_contains_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str)
+{
 	uint8_t *node;
-	uint32_t last_byte;
+	uint32_t next_byte;
 
 	if (!tree->root)
 		return false;
 
-	node = cbtree_find_nearest_last_byte(tree, data, len, &last_byte);
-	if (STR_NODE(node))
-		return strcmp((char *) data + last_byte, (char *) node + last_byte) == 0;
+	node = cbtree_find_nearest_generic(tree, data, len, is_str, &next_byte);
+	if (is_str)
+		return strcmp((char *) data + next_byte, (char *) node + next_byte) == 0;
 	else
-		return memcmp(data + last_byte, node + last_byte, len - last_byte) == 0;
+		return memcmp(data + next_byte, node + next_byte, len - next_byte) == 0;
 }
 
 static char *cbtree_find_nearest_str(critbit_tree_t *tree, const char *str)
 {
-	return (char *) cbtree_find_nearest(tree, (uint8_t *) str, strlen(str));
+	uint32_t next_byte;
+
+	return (char *) cbtree_find_nearest_generic(tree, (uint8_t *) str, strlen(str), true, &next_byte);
 }
 
 static uint8_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
-	uint32_t last_byte;
+	uint32_t next_byte;
 
-	return cbtree_find_nearest_last_byte(tree, data, len, &last_byte);
+	return cbtree_find_nearest_generic(tree, data, len, false, &next_byte);
 }
 
-static uint8_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_t *data, size_t len, uint32_t *last_byte)
+static uint8_t *cbtree_find_nearest_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str, uint32_t *next_byte)
 {
 	critbit_node_t *node = tree->root;
 
-	*last_byte = 0;
-	while (INTERNAL_NODE(node)) {
-		critbit_node_t *in_node = node - 1;
+	*next_byte = 0;
+	while (IS_INTERNAL(node)) {
+		critbit_node_t *in_node = (critbit_node_t *) ((uintptr_t) node - 1);
 		uint8_t         val = 0;
 		int             dir;
 
 		if (in_node->byte < len) {
 			val = data[in_node->byte];
-			*last_byte = in_node->byte + 1;
+			*next_byte = in_node->byte + 1;
 		}
 		dir = ((in_node->bitmask | val) + 1) >> 8;
 		node = in_node->child[dir];
@@ -81,6 +91,15 @@ static uint8_t *cbtree_find_nearest_last_byte(critbit_tree_t *tree, const uint8_
 
 	return (uint8_t *) node;
 }
+
+
+
+
+
+/*
+
+
+
 
 static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str)
 {
@@ -153,7 +172,6 @@ static void *cbtree_allocate(size_t size)
 
 
 
-/*
 
 
 
