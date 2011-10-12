@@ -11,7 +11,8 @@
  * #define USE_POSIX_MEMALIGN
  */
 
-#define IS_INTERNAL(node) ((uintptr_t) node & 1)
+#define IS_INTERNAL(node)          ((uintptr_t) node & 1)
+#define GENERATE_DIR(bitmask, val) (((bitmask | val) + 1) >> 8)
 
 typedef enum {CBTREE_OK, CBTREE_FAIL, CBTREE_ENOMEM} cbtree_result_t;
 
@@ -31,6 +32,10 @@ static bool cbtree_contains_generic(critbit_tree_t *tree, const uint8_t *data, s
 static char *cbtree_find_nearest_str(critbit_tree_t *tree, const char *str);
 static uint8_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len);
 static uint8_t *cbtree_find_nearest_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str, uint32_t *next_byte);
+static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str);
+static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str);
+static void *cbtree_allocate(size_t size);
 
 static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 {
@@ -77,29 +82,20 @@ static uint8_t *cbtree_find_nearest_generic(critbit_tree_t *tree, const uint8_t 
 
 	*next_byte = 0;
 	while (IS_INTERNAL(node)) {
-		critbit_node_t *in_node = (critbit_node_t *) ((uintptr_t) node - 1);
+		critbit_node_t *int_node = (critbit_node_t *) ((uintptr_t) node - 1);
 		uint8_t         val = 0;
 		int             dir;
 
-		if (in_node->byte < len) {
-			val = data[in_node->byte];
-			*next_byte = in_node->byte + 1;
+		if (int_node->byte < len) {
+			val = data[int_node->byte];
+			*next_byte = int_node->byte + 1;
 		}
-		dir = ((in_node->bitmask | val) + 1) >> 8;
-		node = in_node->child[dir];
+		dir = GENERATE_DIR(int_node->bitmask, val);
+		node = int_node->child[dir];
 	}
 
 	return (uint8_t *) node;
 }
-
-
-
-
-
-/*
-
-
-
 
 static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str)
 {
@@ -111,10 +107,11 @@ static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, 
 	return cbtree_insert_generic(tree, data, len, false);
 }
 
-static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool str_node)
+static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str)
 {
-	uint8_t *node;
 	uint32_t new_byte;
+	uint8_t *ext_node, new_bitmask, val;
+	int      dir;
 
 	if (!tree->root) {
 		void *ptr;
@@ -122,7 +119,7 @@ static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t
 		if (!(ptr = cbtree_allocate(len)))
 			return CBTREE_ENOMEM;
 
-		if (str_node)
+		if (is_str)
 			memcpy(ptr, data, len + 1);
 		else
 			memcpy(ptr, data, len);
@@ -131,20 +128,29 @@ static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t
 		return CBTREE_OK;
 	}
 
-
-	/*
-	 * TODO: añadir str_node al API y los *_generic().
-
-
-	node = cbtree_find_nearest_last_byte(tree, data, len, &new_byte);
-
+	// TODO: sacar el for y el if a una funcion auxiliar
+	ext_node = cbtree_find_nearest_generic(tree, data, len, is_str, &new_byte);
 	for (; new_byte < len; new_byte++) {
-		if (data[new_byte] != node[new_byte]) { }
+		if (data[new_byte] != ext_node[new_byte]) {
+			new_bitmask = data[new_byte] ^ ext_node[new_byte];
+			goto different_byte_found;
+		}
 	}
 
+	if (is_str && ext_node[new_byte] != '\0') {
+		new_bitmask = ext_node[new_byte];
+		goto different_byte_found;
+	}
 
+	return CBTREE_FAIL;
 
+different_byte_found:
+	while (new_bitmask & (new_bitmask - 1))
+		new_bitmask &= new_bitmask - 1;
 
+	new_bitmask ^= UINT8_MAX;
+	val = ext_node[new_byte];
+	dir = GENERATE_DIR(new_bitmask, val);
 }
 
 static void *cbtree_allocate(size_t size)
@@ -160,63 +166,3 @@ static void *cbtree_allocate(size_t size)
 
 	return ptr;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-cbtree_insert_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len)
-{
-	critbit_node_t *node;
-
-	if (!tree->root) {
-		if (!(node = cbtree_allocate(len)))
-			return cbtree_nomem;
-		memcpy(node, data, len);
-		tree->root = node;
-
-		return cbtree_ok;
-	}
-
-	node = cbtree_find_bit(tree, data, len);
-
-
-
-
-
-	int newbyte;
-	int newbitmask;
-
-	for (newbyte = 0; newbyte < len; newbyte++) {
-		if (node[newbyte] != data[newbyte]) {
-			newbitmask = p[newbyte] ^ data[newbyte];
-			goto different_byte_found;
-		}
-	}
-
-	return CBTREE_FAIL;
-
-different_byte_found:
-	while (newbitmask & (newbitmask - 1))
-		newbitmask &= newbitmask - 1;
-
-	newbitmask ^= 255;
-
-	uint8_t c = node[newbyte];
-	int dir = ((newbitmask | c) + 1) >> 8;
-}
-
-
-
-
-*/
