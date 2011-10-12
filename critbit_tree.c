@@ -36,6 +36,7 @@ static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str);
 static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len);
 static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str);
 static void *cbtree_allocate(size_t size);
+static bool cbtree_cmp_bytes(const uint8_t *data1, const uint8_t *data2, size_t len, uint32_t *diff_byte);
 
 static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 {
@@ -109,7 +110,7 @@ static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, 
 
 static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str)
 {
-	uint32_t new_byte;
+	uint32_t new_byte, diff_byte;
 	uint8_t *ext_node, new_bitmask, val;
 	int      dir;
 
@@ -128,41 +129,64 @@ static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t
 		return CBTREE_OK;
 	}
 
-	// TODO: sacar el for y el if a una funcion auxiliar
 	ext_node = cbtree_find_nearest_generic(tree, data, len, is_str, &new_byte);
-	for (; new_byte < len; new_byte++) {
-		if (data[new_byte] != ext_node[new_byte]) {
-			new_bitmask = data[new_byte] ^ ext_node[new_byte];
-			goto different_byte_found;
-		}
+	if (!cbtree_cmp_bytes(data + new_byte, ext_node + new_byte, len - new_byte, is_str, &diff_byte)) {
+		new_byte += diff_byte;
+		new_bitmask = data[new_byte] ^ ext_node[new_byte];
+		goto continue_insert;
 	}
 
 	if (is_str && ext_node[new_byte] != '\0') {
 		new_bitmask = ext_node[new_byte];
-		goto different_byte_found;
+		goto continue_insert;
 	}
 
 	return CBTREE_FAIL;
 
-different_byte_found:
+continue_insert:
 	while (new_bitmask & (new_bitmask - 1))
 		new_bitmask &= new_bitmask - 1;
 
 	new_bitmask ^= UINT8_MAX;
 	val = ext_node[new_byte];
 	dir = GENERATE_DIR(new_bitmask, val);
+
+	//
+	// TODO: continuar por la pagina 13 de la documentacion
+	//
 }
 
 static void *cbtree_allocate(size_t size)
 {
+#ifdef USE_POSIX_MEMALIGN
 	void *ptr;
 
-#ifdef USE_POSIX_MEMALIGN
 	if (posix_memalign(&ptr, sizeof(void *), size))
 		return NULL;
-#else
-	ptr = malloc(size);
-#endif
 
 	return ptr;
+#else
+	return malloc(size);
+#endif
+}
+
+static bool cbtree_cmp_bytes(const uint8_t *restrict data1, const uint8_t *restrict data2, size_t len, uint32_t *diff_byte)
+{
+	*diff_byte = 0;
+	for (; data1 & ~(sizeof(long) - 1) && *diff_byte < len; (*diff_byte)++) {
+		if (data1[*diff_byte] != data2[*diff_byte])
+			return false;
+	}
+
+	for (; *diff_byte < len && len - *diff_byte >= sizeof(long); *diff_byte += sizeof(long)) {
+		if (*((long *) (data1 + *diff_byte)) != *((long *) (data2 + *diff_byte)))
+			break;
+	}
+
+	for (; *diff_byte < len; (*diff_byte)++) {
+		if (data1[*diff_byte] != data2[*diff_byte])
+			return false;
+	}
+
+	return true;
 }
