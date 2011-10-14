@@ -26,24 +26,29 @@ typedef struct {
 	void *root;
 } critbit_tree_t;
 
-static bool cbtree_contains_str(critbit_tree_t *tree, const char *str);
-static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len);
+//
+// TODO: permitir busqueda por prefijo, y mas operaciones
+//
+
+static inline bool cbtree_contains_str(critbit_tree_t *tree, const char *str);
+static inline bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len);
 static bool cbtree_contains_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str);
-static char *cbtree_find_nearest_str(critbit_tree_t *tree, const char *str);
-static uint8_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static inline char *cbtree_find_nearest_str(critbit_tree_t *tree, const char *str);
+static inline uint8_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len);
 static uint8_t *cbtree_find_nearest_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str, uint32_t *next_byte);
-static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str);
-static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len);
+static inline cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str);
+static inline cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len);
 static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str);
-static void *cbtree_allocate(size_t size);
+static cbtree_result_t cbtree_insert_empty_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str);
+static inline void *cbtree_allocate(size_t size);
 static bool cbtree_cmp_bytes(const uint8_t *data1, const uint8_t *data2, size_t len, uint32_t *diff_byte);
 
-static bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
+static inline bool cbtree_contains_str(critbit_tree_t *tree, const char *str)
 {
 	return cbtree_contains_generic(tree, (uint8_t *) str, strlen(str), true);
 }
 
-static bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len)
+static inline bool cbtree_contains(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
 	return cbtree_contains_generic(tree, data, len, false);
 }
@@ -63,18 +68,14 @@ static bool cbtree_contains_generic(critbit_tree_t *tree, const uint8_t *data, s
 		return memcmp(data + next_byte, node + next_byte, len - next_byte) == 0;
 }
 
-static char *cbtree_find_nearest_str(critbit_tree_t *tree, const char *str)
+static inline char *cbtree_find_nearest_str(critbit_tree_t *tree, const char *str)
 {
-	uint32_t next_byte;
-
-	return (char *) cbtree_find_nearest_generic(tree, (uint8_t *) str, strlen(str), true, &next_byte);
+	return (char *) cbtree_find_nearest_generic(tree, (uint8_t *) str, strlen(str), true, (uint32_t []) {0});
 }
 
-static uint8_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len)
+static inline uint8_t *cbtree_find_nearest(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
-	uint32_t next_byte;
-
-	return cbtree_find_nearest_generic(tree, data, len, false, &next_byte);
+	return cbtree_find_nearest_generic(tree, data, len, false, (uint32_t []) {0});
 }
 
 static uint8_t *cbtree_find_nearest_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str, uint32_t *next_byte)
@@ -98,12 +99,12 @@ static uint8_t *cbtree_find_nearest_generic(critbit_tree_t *tree, const uint8_t 
 	return (uint8_t *) node;
 }
 
-static cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str)
+static inline cbtree_result_t cbtree_insert_str(critbit_tree_t *tree, const char *str)
 {
 	return cbtree_insert_generic(tree, (uint8_t *) str, strlen(str), true);
 }
 
-static cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len)
+static inline cbtree_result_t cbtree_insert(critbit_tree_t *tree, const uint8_t *data, size_t len)
 {
 	return cbtree_insert_generic(tree, data, len, false);
 }
@@ -114,36 +115,20 @@ static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t
 	uint8_t *ext_node, new_bitmask, val;
 	int      dir;
 
-	if (!tree->root) {
-		void *ptr;
-
-		if (!(ptr = cbtree_allocate(len)))
-			return CBTREE_ENOMEM;
-
-		if (is_str)
-			memcpy(ptr, data, len + 1);
-		else
-			memcpy(ptr, data, len);
-		tree->root = ptr;
-
-		return CBTREE_OK;
-	}
+	if (!tree->root)
+		return cbtree_insert_empty_generic(tree, data, len, is_str);
 
 	ext_node = cbtree_find_nearest_generic(tree, data, len, is_str, &new_byte);
-	if (!cbtree_cmp_bytes(data + new_byte, ext_node + new_byte, len - new_byte, is_str, &diff_byte)) {
+	if (cbtree_cmp_bytes(data + new_byte, ext_node + new_byte, len - new_byte, is_str, &diff_byte)) {
+		if (is_str && ext_node[new_byte] != '\0')
+			new_bitmask = ext_node[new_byte];
+		else
+			return CBTREE_FAIL;
+	} else {
 		new_byte += diff_byte;
 		new_bitmask = data[new_byte] ^ ext_node[new_byte];
-		goto continue_insert;
 	}
 
-	if (is_str && ext_node[new_byte] != '\0') {
-		new_bitmask = ext_node[new_byte];
-		goto continue_insert;
-	}
-
-	return CBTREE_FAIL;
-
-continue_insert:
 	while (new_bitmask & (new_bitmask - 1))
 		new_bitmask &= new_bitmask - 1;
 
@@ -151,12 +136,78 @@ continue_insert:
 	val = ext_node[new_byte];
 	dir = GENERATE_DIR(new_bitmask, val);
 
+	// XXX: ponerlo junto al resto de declaraciones de arriba
+	critbit_node_t *new_node;
+	uint8_t        *new_data;
 	//
-	// TODO: continuar por la pagina 13 de la documentacion
-	//
+
+	if (!(new_node = cbtree_allocate(sizeof(critbit_node_t))))
+		return CBTREE_ENOMEM;
+	if (is_str && !(new_data = cbtree_allocate(len + 1)))
+		return CBTREE_ENOMEM;
+	else if (!(new_data = cbtree_allocate(len)))
+		return CBTREE_ENOMEM;
+
+	if (is_str)
+		memcpy(new_data, data, len + 1);
+	else
+		memcpy(new_data, data, len);
+
+	new_node->byte           = new_byte;
+	new_node->bitmask        = new_bitmask;
+	new_node->child[1 - dir] = new_data;
+
+
+
+
+
+
+
+	// XXX: Meter este codigo en una funcion auxiliar
+	void **wherep = &tree->root;
+
+	for (;;) {
+		uint8_t *p = *wherep;
+
+		if (!IS_INTERNAL(p))
+			break;
+
+		critbit_node_t *q = p - 1;
+
+		if (q->byte > new_byte)
+			break;
+		if (q->byte == new_byte && q->bitmask > new_bitmask)
+			break;
+
+		uint8_t val = 0;
+		if (q->byte < len)
+			val = data[q->byte];
+		const int dir = GENERATE_DIR(q->bitmask, val);
+		wherep = q->child + dir;
+	}
+
+	new_node->child[new_dir] = *wherep;
+	*wherep = new_node + 1;
+	// XXX
 }
 
-static void *cbtree_allocate(size_t size)
+static cbtree_result_t cbtree_insert_empty_generic(critbit_tree_t *tree, const uint8_t *data, size_t len, bool is_str)
+{
+	void *ptr;
+
+	if (!(ptr = cbtree_allocate(len)))
+		return CBTREE_ENOMEM;
+
+	if (is_str)
+		memcpy(ptr, data, len + 1);
+	else
+		memcpy(ptr, data, len);
+	tree->root = ptr;
+
+	return CBTREE_OK;
+}
+
+static inline void *cbtree_allocate(size_t size)
 {
 #ifdef USE_POSIX_MEMALIGN
 	void *ptr;
