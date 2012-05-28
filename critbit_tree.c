@@ -129,10 +129,11 @@ static cbtree_result_t cbtree_insert_generic(critbit_tree_t *tree, const uint8_t
 		new_bitmask = data[new_byte] ^ ext_node[new_byte];
 	}
 
-	while (new_bitmask & (new_bitmask - 1))
-		new_bitmask &= new_bitmask - 1;
+	new_bitmask |= new_bitmask >> 1;
+	new_bitmask |= new_bitmask >> 2;
+	new_bitmask |= new_bitmask >> 4;
+	new_bitmask = (new_bitmask & ~(new_bitmask >> 1)) ^ UINT8_MAX;
 
-	new_bitmask ^= UINT8_MAX;
 	val = ext_node[new_byte];
 	dir = GENERATE_DIR(new_bitmask, val);
 
